@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 interface Props {
-  onSuccessful?: (url: string) => void;
+  onSuccessful?: (fileName: string) => void;
   onUploading?: () => void;
   onFailed?: () => void;
   className?: string;
@@ -19,8 +19,10 @@ const UploadButton: React.FunctionComponent<Props> = ({
 
   const changeFile = async (event: any) => {
     const fileForm = new FormData();
-    fileForm.append('file', event?.target?.files[0]);
+    const file = event?.target?.files[0];
+    fileForm.append('file', file);
     try {
+      onUploading && onUploading();
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: fileForm,
@@ -29,8 +31,10 @@ const UploadButton: React.FunctionComponent<Props> = ({
       if (!response.ok) {
         throw data;
       }
+      onSuccessful && onSuccessful(file.name);
     } catch (error) {
       console.log(error);
+      onFailed && onFailed();
     }
   };
 
