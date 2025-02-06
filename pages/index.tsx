@@ -75,7 +75,6 @@ export default function Home() {
           />
           <UploadButton>
             <Image
-              className='dark:invert'
               src='/upload.svg'
               alt='Upload File'
               width={24}
@@ -84,7 +83,7 @@ export default function Home() {
           </UploadButton>
           <button>
             <Image
-              className='dark:invert translate -rotate-90'
+              className='translate -rotate-90'
               src='/send.svg'
               alt='Send Message'
               width={24}
