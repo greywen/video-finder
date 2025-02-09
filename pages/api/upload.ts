@@ -23,10 +23,10 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
       const pathToWriteFile = `public/videos/${file.originalFilename}`;
       const finallyFile = await fs.readFile(filePath);
       await fs.writeFile(pathToWriteFile, finallyFile);
-      res.status(200).json({ message: '视频上传成功' });
+      res.status(200).json({ message: 'Video uploaded successfully' });
     } catch (error) {
       console.error(error);
-      res.status(500).json({ message: '视频上传失败' });
+      res.status(500).json({ message: 'Video upload failed' });
       return;
     }
   }
