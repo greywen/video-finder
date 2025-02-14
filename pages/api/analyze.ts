@@ -3,7 +3,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import { MessageRole, ResultType } from '@/types/common';
-import globalConfig from '@/config/globalConfig';
+import { deleteAnalysisTracker, generateAnalysisTracker, getAnalysisTracker } from '@/utils/analysisTracker';
 
 
 export const config = {
@@ -88,10 +88,13 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     }
 
     const abortKey = fileNameWithExt.replaceAll('.', '');
-    globalConfig.ac[abortKey] = new AbortController();
-    
+    generateAnalysisTracker(abortKey);
+
     let currentDuration = 1;
-    while (currentDuration <= videoDuration && currentDuration < 10) {
+    while (currentDuration <= videoDuration && currentDuration < 4) {
+      if (!getAnalysisTracker(abortKey)) {
+        break;
+      }
       const imageFilePath = await getVideoKeyframeImg({
         imgOutputPath,
         videoFilePath,
@@ -111,7 +114,6 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
       const url = 'http://localhost:8000/chat-stream';
       try {
         const response = await fetch(url, {
-          signal: globalConfig.ac[abortKey].signal,
           method: 'POST',
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -149,6 +151,7 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
 
         const reader = response.body?.getReader();
         if (!reader) {
+          deleteAnalysisTracker(abortKey);
           throw new Error('Response body is null or not readable');
         }
 
@@ -193,7 +196,7 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
         }
       }
     }
-
+    deleteAnalysisTracker(abortKey);
     res.write(
       Buffer.from(
         `data: ${JSON.stringify({
