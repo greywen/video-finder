@@ -68,6 +68,11 @@ export default function Home() {
         setMessages([...msgs]);
       } else if (value.t === ResultType.End) {
         setAnalyzing(false);
+      } else if (value.t === ResultType.Cancelled) {
+        setAnalyzing(false);
+      } else if (value.t === ResultType.Error) {
+        setAnalyzing(false);
+        alert(value.r);
       }
     }
   };

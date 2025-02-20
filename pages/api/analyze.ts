@@ -1,10 +1,8 @@
 import { promises as fs } from 'fs';
 import { NextApiRequest, NextApiResponse } from 'next';
 import ffmpeg from 'fluent-ffmpeg';
-import path from 'path';
 import { ResultType } from '@/types/common';
 import { deleteAnalysisTracker, generateAnalysisTracker, getAnalysisTracker } from '@/utils/analysisTracker';
-
 
 export const config = {
   api: {
@@ -12,7 +10,7 @@ export const config = {
   },
 }
 
-async function fileExists(filePath: string) {
+async function fileExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath);
     return true;
@@ -58,123 +56,139 @@ function createImgOutputDirectory(fileNameWithExt: string) {
   return outputPath;
 }
 
-async function convertImageFileToBase64(filePath: string) {
-  const imagePath = path.resolve(filePath);
-  const imageBuffer = await fs.readFile(imagePath);
-  return imageBuffer.toString('base64');
+function sendStreamData(res: NextApiResponse, data: any) {
+  res.write(Buffer.from(`data: ${JSON.stringify(data)}\r\n\r\n`));
+}
+
+function handleStreamError(res: NextApiResponse, error: any, currentDuration?: number) {
+  console.error("Stream Error:", error);
+  sendStreamData(res, {
+    i: currentDuration,
+    t: ResultType.Error,
+    r: error.message || 'An unexpected error occurred.',
+  });
 }
 
 export default async (req: NextApiRequest, res: NextApiResponse) => {
-  if (req.method === 'POST') {
-    const { fileNameWithExt, text }: { fileNameWithExt: string, text: string } = req.body;
-    const videoFilePath = `public/videos/` + fileNameWithExt;
+  if (req.method !== 'POST') {
+    res.status(405).end();
+    return;
+  }
+
+  const { fileNameWithExt, text }: { fileNameWithExt: string, text: string } = req.body;
+  const videoFilePath = `public/videos/` + fileNameWithExt;
+
+  const abortKey = fileNameWithExt.replaceAll('.', '');
+  generateAnalysisTracker(abortKey);
+
+  try {
     if (!(await fileExists(videoFilePath))) {
-      res.json({ message: 'The video file does not exist' });
-      return;
+      throw new Error('The video file does not exist');
     }
 
     const imgOutputPath = createImgOutputDirectory(fileNameWithExt);
-
     const videoDuration = await getVideoDuration(videoFilePath);
-    if (!videoDuration || videoDuration < 1) {
-      res.json({ message: 'Failed to obtain video duration' });
-      return;
-    }
 
-    const abortKey = fileNameWithExt.replaceAll('.', '');
-    generateAnalysisTracker(abortKey);
+    if (!videoDuration || videoDuration < 1) {
+      throw new Error('Failed to obtain video duration');
+    }
 
     let currentDuration = 1;
     while (currentDuration <= videoDuration) {
       if (!getAnalysisTracker(abortKey)) {
+        sendStreamData(res, { t: ResultType.Cancelled });
         break;
       }
-      const imageFilePath = await getVideoKeyframeImg({
-        imgOutputPath,
-        videoFilePath,
-        seek: currentDuration,
-      });
 
-      res.write(
-        Buffer.from(
-          `data: ${JSON.stringify({
-            i: currentDuration,
-            t: ResultType.Image,
-            r: imageFilePath.replace('public', ''),
-          })}\r\n\r\n`,
-        ),
-      );
-
-      const url = 'http://localhost:8000/chat-stream';
       try {
+        const imageFilePath = await getVideoKeyframeImg({
+          imgOutputPath,
+          videoFilePath,
+          seek: currentDuration,
+        });
+
+        sendStreamData(res, {
+          i: currentDuration,
+          t: ResultType.Image,
+          r: imageFilePath.replace('public', ''),
+        });
+
+        const url = 'http://localhost:8000/chat-stream';
         const response = await fetch(url, {
           method: 'POST',
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             text: text,
             image_path: imageFilePath.replace('public/images', '').replaceAll('/', '\\'),
-          })
+          }),
         });
+
+        if (!response.ok) {
+          throw new Error(`Chat Stream Error: ${response.status} ${response.statusText}`);
+        }
 
         const decoder = new TextDecoder();
         let buffer = '';
-
         const reader = response.body?.getReader();
+
         if (!reader) {
-          deleteAnalysisTracker(abortKey);
           throw new Error('Response body is null or not readable');
         }
 
+        let accumulatedText = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
+            if (accumulatedText.trim()) {
+              sendStreamData(res, {
+                i: currentDuration,
+                t: ResultType.Text,
+                r: accumulatedText.trim(),
+              });
+            }
             currentDuration += 1;
             break;
           }
 
           buffer += decoder.decode(value, { stream: true });
-
           let lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
           for (const line of lines) {
             if (line.trim() !== '') {
-              const json = JSON.parse(line);
-              if (json.done) {
-                break;
+              try {
+                const json = JSON.parse(line);
+                if (json.done) {
+                  break;
+                }
+                if (json?.error) {
+                  throw new Error(json.error);
+                }
+                const textContent = json.message?.content || '';
+                accumulatedText += textContent;
+              } catch (parseError) {
+                console.warn("JSON parse error:", parseError, "on line:", line);
               }
-              if (json?.error) {
-                throw json.error;
-              }
-              const text = json.message.content || '';
-              res.write(
-                Buffer.from(
-                  `data: ${JSON.stringify({
-                    i: currentDuration,
-                    t: ResultType.Text,
-                    r: text,
-                  })}\r\n\r\n`,
-                ),
-              );
             }
           }
         }
-      }
-      catch (error) {
-        if (error.name === 'AbortError') {
-          break;
-        }
+      } catch (innerError) {
+        handleStreamError(res, innerError, currentDuration);
+        break;
       }
     }
+
+    if (getAnalysisTracker(abortKey)) {
+      sendStreamData(res, {
+        i: currentDuration,
+        t: ResultType.End,
+      });
+    }
+
+  } catch (error) {
+    handleStreamError(res, error);
+  } finally {
     deleteAnalysisTracker(abortKey);
-    res.write(
-      Buffer.from(
-        `data: ${JSON.stringify({
-          i: currentDuration,
-          t: ResultType.End,
-        })}\r\n\r\n`,
-      ),
-    );
     res.end();
   }
 };
