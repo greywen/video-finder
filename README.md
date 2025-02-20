@@ -1,4 +1,4 @@
-# 本地DeepSeek VL + Typescript + FFMPEG：打造高效视频内容分析工具
+# 初探本地DeepSeek VL + Typescript + FFMPEG：提取视频关键帧分析内容
 
 ## 前言
 
@@ -6,8 +6,7 @@
 使用 ffmpeg 从视频中提取关键帧图片；
 基于 DeepSeek VL 1.3B 本地大模型对视频帧进行目标检测与识别（例如特定物体或人物）；
 实现流式传输分析结果，确保实时反馈；
-提供终止分析操作的机制，防止资源浪费。
-在这个过程中，我们将详细讲解每个环节的代码实现和工作机制。
+提供终止分析操作的机制，防止资源浪费；
 
 ## 环境要求
 - Typescirpt 5+
@@ -18,7 +17,8 @@
 
 ## 项目演示（视频未加速）
 
-通过视频我们可以看到DeepSeek-VL分析图片的速度还是非常之快的（使用的显卡是英伟达RTX 4070Ti-O12G）
+[点击播放视频](https://img2024.cnblogs.com/blog/809672/202502/809672-20250220165317087-634598687.avif)
+使用的显卡是英伟达RTX 4070Ti-O12G
 
 ## 技术实现
 
@@ -69,6 +69,7 @@ async function getVideoKeyframeImg(params: GetVideoKeyframeImgParams): Promise<s
 ```
 
 ### 接口部分
+
 #### 使用开源深度视觉语言（VL）模型：[DeepSeek-VL](https://github.com/deepseek-ai/DeepSeek-VL)
 DeepSeek VL 是一个支持图像分析和目标检测的深度学习模型。它能够对输入的图像进行分析，并返回检测到的目标及其位置信息。在实现中，DeepSeek VL 用于分析提取的关键帧，判断其中是否包含特定的物体或人物。
 
@@ -83,3 +84,16 @@ filePath = "C:\\Users\\Administrator\\Code\\video-finder\\public\\images\\"
 ```bash
 python .\deepseek_vl\serve\app_deepseek_rest_api.py
 ```
+
+### 实际应用场景与扩展
+
+通过视频我们可以看到DeepSeek-VL分析图片的速度还是非常之快的，由于DeepSeek-VL暂不支持指定格式返回所以有很多应用场景是无法做到的，比如：
+- 视频内容中寻找某个物体或人物；
+- 视频内容的自动摘要及标签提取；
+- 监控视频中的异常行为检测；
+- 实时视频流的内容检索；
+等等
+
+### 总结
+
+本项目简单初探一下如何利用 ffmpeg 与 DeepSeek VL 技术，对视频文件进行关键帧提取和图片的分析。希望本文能为大家提供灵感，在实际项目中更好地应用视频分析技术。
