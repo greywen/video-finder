@@ -33,7 +33,6 @@ const UploadButton: React.FunctionComponent<Props> = ({
       }
       onSuccessful && onSuccessful(file.name);
     } catch (error) {
-      console.log(error);
       onFailed && onFailed();
     }
   };

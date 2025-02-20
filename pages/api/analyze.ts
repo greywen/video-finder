@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { NextApiRequest, NextApiResponse } from 'next';
 import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
-import { MessageRole, ResultType } from '@/types/common';
+import { ResultType } from '@/types/common';
 import { deleteAnalysisTracker, generateAnalysisTracker, getAnalysisTracker } from '@/utils/analysisTracker';
 
 
@@ -33,16 +33,10 @@ async function getVideoKeyframeImg(params: GetVideoKeyframeImgParams): Promise<s
   return new Promise((resolve, reject) => {
     ffmpeg(videoFilePath)
       .seekInput(seek)
-      .on('end', () => {
-        console.log('Keyframe image extraction completed:', imgFileOutputPath);
-        resolve(imgFileOutputPath);
-      })
-      .on('error', (err) => {
-        console.error('Error extracting video frames:', err);
-        reject(err);
-      })
       .output(imgFileOutputPath)
       .outputOptions(['-frames:v 1'])
+      .on('end', () => resolve(imgFileOutputPath))
+      .on('error', err => reject(err))
       .run();
   });
 }
@@ -72,7 +66,7 @@ async function convertImageFileToBase64(filePath: string) {
 
 export default async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method === 'POST') {
-    const { fileNameWithExt, text, credibility }: { fileNameWithExt: string, text: string, credibility: number } = req.body;
+    const { fileNameWithExt, text }: { fileNameWithExt: string, text: string } = req.body;
     const videoFilePath = `public/videos/` + fileNameWithExt;
     if (!(await fileExists(videoFilePath))) {
       res.json({ message: 'The video file does not exist' });
@@ -91,7 +85,7 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
     generateAnalysisTracker(abortKey);
 
     let currentDuration = 1;
-    while (currentDuration <= videoDuration && currentDuration < 4) {
+    while (currentDuration <= videoDuration) {
       if (!getAnalysisTracker(abortKey)) {
         break;
       }
@@ -117,34 +111,10 @@ export default async (req: NextApiRequest, res: NextApiResponse) => {
           method: 'POST',
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            text: `
-          你是一个图片分析助手,请分析图片,回答以下问题
-          问题：
-          1. 图片中是否有 ${text}?
-          2. 如果有，请详细描述其在图片中的外观和位置, 如果没有，请描述你在图片中看到的内容。
-          3. 以 1-10 为标准，你对自己的答案有多大信心？`,
+            text: text,
             image_path: imageFilePath.replace('public/images', '').replaceAll('/', '\\'),
           })
         });
-
-        // const url = 'http://localhost:11434/api/chat';
-        // const base64Image = await convertImageFileToBase64(imageFilePath);
-        // const response = await fetch(url, {
-        //   method: 'POST',
-        //   body: JSON.stringify({
-        //     model: 'llama3.2-vision:latest',
-        //     messages: [{
-        //       role: MessageRole.User, images: [base64Image], content: `
-        //       你是一个图片分析助手,所有输出都应严格遵循JSON格式
-        //       任务:请分析图片,回答以下问题并提取JSON中需要的关键信息,然后严格遵循JSON格式返回结果。
-        //       问题：
-        //       1. 图片中是否有 ${text}?
-        //       2. 如果有，请详细描述其在图片中的外观和位置, 如果没有，请描述你在图片中看到的内容。
-        //       3. 以 1-10 为标准，你对自己的答案有多大信心？
-        //       所需JSON格式: { "Anwer": 是/否, "Description": 你对图片的详细描述, "Credibility": 1-10 }
-        //       `}],
-        //   })
-        // });
 
         const decoder = new TextDecoder();
         let buffer = '';

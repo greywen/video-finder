@@ -5,16 +5,16 @@ import { useState } from 'react';
 
 export default function Home() {
   const [fileName, setFileName] = useState('');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState('请详细描述你在图片中看到的内容');
   const [messages, setMessages] = useState<{ image?: string; text?: string }[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const analyze = async () => {
-    if (!description) { alert("输入你要寻找的内容"); return; }
+    if (!description) { alert("描述内容不能为空"); return; }
+    if (!fileName) { alert("上传需要分析的视频"); return; }
     if (uploading) { alert("视频上传中，请稍后"); return; }
     setDescription('');
-    setMessages([]);
     setAnalyzing(true);
 
     const response = await fetch('/api/analyze', {
